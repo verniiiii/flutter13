@@ -28,6 +28,7 @@ class NewsArticleEntity {
   final String? imageUrl;
   final NewsCategory category;
   final String source;
+  final String? sourceId; // ID источника из NewsAPI
   final DateTime publishedAt;
   final String? url;
   final bool isRead;
@@ -40,6 +41,7 @@ class NewsArticleEntity {
     this.imageUrl,
     required this.category,
     required this.source,
+    this.sourceId,
     required this.publishedAt,
     this.url,
     this.isRead = false,

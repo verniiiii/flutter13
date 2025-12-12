@@ -57,6 +57,7 @@ class NewsArticle {
   String? imageUrl;
   NewsCategory category;
   String source;
+  String? sourceId; // ID источника из NewsAPI
   DateTime publishedAt;
   String? url;
   bool isRead;
@@ -69,6 +70,7 @@ class NewsArticle {
     this.imageUrl,
     required this.category,
     required this.source,
+    this.sourceId,
     required this.publishedAt,
     this.url,
     this.isRead = false,
@@ -99,6 +101,7 @@ class NewsArticle {
     String? imageUrl,
     NewsCategory? category,
     String? source,
+    String? sourceId,
     DateTime? publishedAt,
     String? url,
     bool? isRead,
@@ -111,6 +114,7 @@ class NewsArticle {
       imageUrl: imageUrl ?? this.imageUrl,
       category: category ?? this.category,
       source: source ?? this.source,
+      sourceId: sourceId ?? this.sourceId,
       publishedAt: publishedAt ?? this.publishedAt,
       url: url ?? this.url,
       isRead: isRead ?? this.isRead,
