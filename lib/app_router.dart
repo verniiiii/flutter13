@@ -11,6 +11,7 @@ import 'package:prac13/core/models/models.dart';
 import 'package:prac13/ui/features/onboarding/screens/onboarding_screen.dart';
 import 'package:prac13/ui/features/auth/screens/login_screen.dart';
 import 'package:prac13/ui/features/auth/screens/register_screen.dart';
+import 'package:prac13/ui/features/auth/screens/change_password_screen.dart';
 import 'package:prac13/ui/features/cards/screens/card_form_screen.dart';
 import 'package:prac13/ui/features/cards/screens/cards_list_screen.dart';
 import 'package:prac13/ui/features/cards/state/cards_store.dart';
@@ -40,6 +41,12 @@ class AppRouter {
         path: '/register',
         builder: (BuildContext context, GoRouterState state) {
           return const RegisterScreen();
+        },
+      ),
+      GoRoute(
+        path: '/change-password',
+        builder: (BuildContext context, GoRouterState state) {
+          return const ChangePasswordScreen();
         },
       ),
       // Маршруты для карт (вынесены на верхний уровень)
