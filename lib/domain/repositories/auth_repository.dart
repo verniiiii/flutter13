@@ -19,4 +19,5 @@ abstract class AuthRepository {
     String? language,
   });
   Future<void> resetPassword(String email);
+  Future<void> updatePassword(String oldPassword, String newPassword);
 }
