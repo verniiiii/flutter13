@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:get_it/get_it.dart';
 import 'package:prac13/ui/features/news/state/news_store.dart';
 import 'package:prac13/core/models/news_model.dart';
@@ -12,7 +11,7 @@ class NewsScreen extends StatelessWidget {
     final store = GetIt.I<NewsStore>();
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Новости и курсы'),
@@ -33,6 +32,7 @@ class NewsScreen extends StatelessWidget {
             tabs: const [
               Tab(icon: Icon(Icons.currency_exchange), text: 'Курсы'),
               Tab(icon: Icon(Icons.article), text: 'Новости'),
+              Tab(icon: Icon(Icons.trending_up), text: 'Популярные'),
             ],
           ),
         ),
@@ -43,6 +43,9 @@ class NewsScreen extends StatelessWidget {
 
             // Вкладка с новостями
             _buildNewsTab(store, context),
+
+            // Вкладка с популярными новостями
+            _buildPopularNewsTab(store, context),
           ],
         ),
       ),
@@ -50,8 +53,9 @@ class NewsScreen extends StatelessWidget {
   }
 
   Widget _buildCurrencyRatesTab(NewsStore store, BuildContext context) {
-    return Observer(
-      builder: (_) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
         if (store.isLoading && store.currencyRates.isEmpty) {
           return const Center(
             child: CircularProgressIndicator(),
@@ -163,8 +167,9 @@ class NewsScreen extends StatelessWidget {
   }
 
   Widget _buildNewsTab(NewsStore store, BuildContext context) {
-    return Observer(
-      builder: (_) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
         return Column(
           children: [
             // Фильтры и поиск
@@ -208,29 +213,132 @@ class NewsScreen extends StatelessWidget {
           const SizedBox(height: 12),
 
           // Категории
-          Observer(
-            builder: (_) => SingleChildScrollView(
+          ListenableBuilder(
+            listenable: store,
+            builder: (context, _) => SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: NewsCategory.values.map((category) {
-                  return Padding(
+                children: [
+                  // Кнопка "Все категории"
+                  Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: FilterChip(
-                      label: Text(category.displayName),
-                      selected: store.selectedCategory == category,
-                      onSelected: (_) => store.setCategory(category),
+                      label: const Text('Все'),
+                      selected: store.selectedCategory == null,
+                      onSelected: (_) => store.selectAllCategories(),
+                      avatar: store.selectedCategory == null
+                          ? const Icon(Icons.check_circle, size: 16)
+                          : const Icon(Icons.radio_button_unchecked, size: 16),
                     ),
-                  );
-                }).toList(),
+                  ),
+                  // Категории
+                  ...NewsCategory.values.map((category) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(category.displayName),
+                        selected: store.selectedCategory == category,
+                        onSelected: (_) => store.setCategory(category),
+                      ),
+                    );
+                  }).toList(),
+                ],
               ),
             ),
           ),
 
+          const SizedBox(height: 12),
+
+          // Фильтр по стране
+          Row(
+            children: [
+              const Icon(Icons.public, size: 18),
+              const SizedBox(width: 8),
+              const Text('Страна:', style: TextStyle(fontSize: 14)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButton<String>(
+                  value: store.selectedCountry ?? 'all',
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('Все страны')),
+                    DropdownMenuItem(value: 'us', child: Text('США')),
+                    DropdownMenuItem(value: 'ru', child: Text('Россия')),
+                    DropdownMenuItem(value: 'gb', child: Text('Великобритания')),
+                    DropdownMenuItem(value: 'de', child: Text('Германия')),
+                    DropdownMenuItem(value: 'fr', child: Text('Франция')),
+                  ],
+                  onChanged: (value) {
+                    if (value == 'all') {
+                      store.selectAllCountries();
+                    } else if (value != null) {
+                      store.setCountry(value);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Выбор источников
+          Row(
+            children: [
+              const Icon(Icons.source, size: 18),
+              const SizedBox(width: 8),
+              const Text('Источники:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              const Spacer(),
+              if (store.selectedSources.isNotEmpty)
+                TextButton.icon(
+                  onPressed: store.clearSources,
+                  icon: const Icon(Icons.clear, size: 16),
+                  label: Text('Очистить (${store.selectedSources.length})'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
+          ListenableBuilder(
+            listenable: store,
+            builder: (context, _) {
+              if (store.isLoadingSources) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+
+              final popularSources = store.availableSources.take(10).toList();
+              
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: popularSources.map((source) {
+                  final isSelected = store.selectedSources.contains(source.id);
+                  return FilterChip(
+                    label: Text(source.name),
+                    selected: isSelected,
+                    onSelected: (_) => store.toggleSource(source.id),
+                    avatar: isSelected
+                        ? const Icon(Icons.check_circle, size: 16)
+                        : const Icon(Icons.radio_button_unchecked, size: 16),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+
+          const SizedBox(height: 12),
 
           // Дополнительные фильтры
-          Observer(
-            builder: (_) => Row(
+          ListenableBuilder(
+            listenable: store,
+            builder: (context, _) => Row(
               children: [
                 const Text('Только непрочитанные'),
                 const Spacer(),
@@ -247,8 +355,9 @@ class NewsScreen extends StatelessWidget {
   }
 
   Widget _buildNewsList(NewsStore store, BuildContext context) {
-    return Observer(
-      builder: (_) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
         if (store.isLoading && store.newsArticles.isEmpty) {
           return const Center(
             child: CircularProgressIndicator(),
@@ -257,7 +366,39 @@ class NewsScreen extends StatelessWidget {
 
         final articles = store.filteredNews;
 
-        if (articles.isEmpty) {
+        if (store.hasError && articles.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Colors.red,
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    store.errorMessage,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.red,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: store.refreshData,
+                  child: const Text('Попробовать снова'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (articles.isEmpty && !store.isLoading) {
           return _buildEmptyNewsState(store, context);
         }
 
@@ -284,8 +425,9 @@ class NewsScreen extends StatelessWidget {
             color: Colors.grey,
           ),
           const SizedBox(height: 20),
-          Observer(
-            builder: (_) => Text(
+          ListenableBuilder(
+            listenable: store,
+            builder: (context, _) => Text(
               store.searchQuery.isNotEmpty
                   ? 'Новости не найдены'
                   : 'Нет новостей в выбранной категории',
@@ -604,5 +746,62 @@ class NewsScreen extends StatelessWidget {
 
   String _formatTime(DateTime time) {
     return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildPopularNewsTab(NewsStore store, BuildContext context) {
+    // Загружаем популярные новости при открытии вкладки
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      store.loadPopularNews();
+    });
+
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        return Column(
+          children: [
+            // Заголовок
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Theme.of(context).dividerColor,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.trending_up,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Популярные новости',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: store.isLoading ? null : () => store.loadPopularNews(),
+                    tooltip: 'Обновить',
+                  ),
+                ],
+              ),
+            ),
+
+            // Список популярных новостей
+            Expanded(
+              child: _buildNewsList(store, context),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
