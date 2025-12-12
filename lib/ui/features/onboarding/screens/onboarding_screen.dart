@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_it/get_it.dart';
 import 'package:prac13/ui/features/onboarding/state/onboarding_store.dart';
@@ -30,8 +29,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Observer(
-        builder: (_) {
+      body: ListenableBuilder(
+        listenable: store,
+        builder: (context, _) {
           final currentPage = store.pages[store.currentPageIndex];
           return Container(
             decoration: BoxDecoration(
@@ -79,8 +79,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Observer(
-      builder: (_) => Padding(
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -125,8 +126,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildProgressIndicator() {
-    return Observer(
-      builder: (_) => Padding(
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -151,8 +153,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildBottomNavigation(BuildContext context) {
-    return Observer(
-      builder: (_) => Container(
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) => Container(
         margin: const EdgeInsets.all(24),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         decoration: BoxDecoration(
