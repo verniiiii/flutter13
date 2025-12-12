@@ -5,8 +5,33 @@ import 'package:get_it/get_it.dart';
 import 'package:prac13/ui/features/auth/state/auth_store.dart';
 import 'package:prac13/core/models/user_model.dart' as model;
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Показываем toast при открытии экрана
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authStore = GetIt.I<AuthStore>();
+      if (authStore.currentUser != null && mounted) {
+        final userName = authStore.currentUser!.displayName ?? 
+                        authStore.currentUser!.email.split('@').first;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Добро пожаловать, $userName!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +326,7 @@ class ProfileScreen extends StatelessWidget {
                   title: 'Сменить пароль',
                   value: '',
                   onTap: () {
-                    context.push('/forgot-password');
+                    context.push('/change-password');
                   },
                 ),
               ],
