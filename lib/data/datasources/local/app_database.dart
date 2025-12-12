@@ -1,7 +1,22 @@
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 
 class AppDatabase {
+  static bool _initialized = false;
+
+  /// Инициализация databaseFactory для Windows/Linux/macOS
+  static Future<void> initialize() async {
+    if (_initialized) return;
+
+    // Инициализируем FFI для десктопных платформ
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      databaseFactory = databaseFactoryFfi;
+    }
+
+    _initialized = true;
+  }
   static const String _databaseName = 'prac12.db';
   static const int _databaseVersion = 1;
 
@@ -20,11 +35,21 @@ class AppDatabase {
   }
 
   static Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, _databaseName);
+    // Убеждаемся, что databaseFactory инициализирован
+    await initialize();
+
+    String dbPath;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Для десктопных платформ используем текущую директорию
+      final directory = Directory.current;
+      dbPath = join(directory.path, _databaseName);
+    } else {
+      // Для мобильных платформ используем стандартный путь
+      dbPath = join(await getDatabasesPath(), _databaseName);
+    }
 
     return await openDatabase(
-      path,
+      dbPath,
       version: _databaseVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -107,9 +132,17 @@ class AppDatabase {
   }
 
   static Future<void> deleteDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, _databaseName);
-    await databaseFactory.deleteDatabase(path);
+    await initialize();
+
+    String dbPath;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final directory = Directory.current;
+      dbPath = join(directory.path, _databaseName);
+    } else {
+      dbPath = join(await getDatabasesPath(), _databaseName);
+    }
+
+    await databaseFactory.deleteDatabase(dbPath);
     _database = null;
   }
 }
