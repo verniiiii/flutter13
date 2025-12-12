@@ -1,12 +1,17 @@
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/entities/user_entity.dart';
 import '../datasources/local/auth_local_datasource.dart';
+import '../datasources/remote/auth_remote_datasource.dart';
 import '../../core/models/user_model.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthLocalDataSource localDataSource;
+  final AuthRemoteDataSource? remoteDataSource;
 
-  AuthRepositoryImpl(this.localDataSource);
+  AuthRepositoryImpl(
+    this.localDataSource, {
+    this.remoteDataSource,
+  });
 
   UserEntity _modelToEntity(User model) {
     return UserEntity(
@@ -44,6 +49,24 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<UserEntity?> login(String email, String password) async {
+    // Используем Remote DataSource, если он доступен
+    if (remoteDataSource != null) {
+      try {
+        final user = await remoteDataSource!.signIn(
+          email: email,
+          password: password,
+        );
+        // Сохраняем пользователя локально для кеширования
+        await localDataSource.setCurrentUser(user);
+        return _modelToEntity(user);
+      } catch (e) {
+        // Если ошибка сети, пробуем локальную логику как fallback
+        // или пробрасываем ошибку дальше
+        rethrow;
+      }
+    }
+
+    // Существующая локальная логика (fallback)
     await Future.delayed(const Duration(seconds: 2));
 
     if (email.isNotEmpty && password.isNotEmpty) {
@@ -78,6 +101,22 @@ class AuthRepositoryImpl implements AuthRepository {
       throw Exception('Пароль должен содержать минимум 6 символов');
     }
 
+    // Используем Remote DataSource, если он доступен
+    if (remoteDataSource != null) {
+      try {
+        final user = await remoteDataSource!.signUp(
+          email: email,
+          password: password,
+        );
+        // Сохраняем пользователя локально для кеширования
+        await localDataSource.setCurrentUser(user);
+        return _modelToEntity(user);
+      } catch (e) {
+        rethrow;
+      }
+    }
+
+    // Существующая локальная логика (fallback)
     await Future.delayed(const Duration(seconds: 2));
 
     final user = User(
@@ -100,14 +139,38 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
-    await Future.delayed(const Duration(milliseconds: 500));
+    // Используем Remote DataSource, если он доступен
+    if (remoteDataSource != null) {
+      try {
+        await remoteDataSource!.logout();
+      } catch (e) {
+        // Даже если запрос не удался, очищаем локальные данные
+      }
+    } else {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
     await localDataSource.clearUser();
   }
 
   @override
   Future<UserEntity?> getCurrentUser() async {
-    final user = await localDataSource.getCurrentUser();
-    return user != null ? _modelToEntity(user) : null;
+    // Сначала пробуем получить из локального хранилища
+    final localUser = await localDataSource.getCurrentUser();
+    
+    // Если есть Remote DataSource, пробуем получить актуальные данные с сервера
+    if (remoteDataSource != null) {
+      try {
+        final remoteUser = await remoteDataSource!.getCurrentUser();
+        // Обновляем локальный кеш
+        await localDataSource.setCurrentUser(remoteUser);
+        return _modelToEntity(remoteUser);
+      } catch (e) {
+        // Если не удалось получить с сервера, возвращаем локальные данные
+        return localUser != null ? _modelToEntity(localUser) : null;
+      }
+    }
+
+    return localUser != null ? _modelToEntity(localUser) : null;
   }
 
   @override
@@ -116,6 +179,23 @@ class AuthRepositoryImpl implements AuthRepository {
     String? phoneNumber,
     String? photoUrl,
   }) async {
+    // Используем Remote DataSource, если он доступен
+    if (remoteDataSource != null) {
+      try {
+        final updated = await remoteDataSource!.updateProfile(
+          displayName: displayName,
+          phoneNumber: phoneNumber,
+          photoUrl: photoUrl,
+        );
+        // Обновляем локальный кеш
+        await localDataSource.setCurrentUser(updated);
+        return _modelToEntity(updated);
+      } catch (e) {
+        rethrow;
+      }
+    }
+
+    // Существующая локальная логика (fallback)
     final current = await localDataSource.getCurrentUser();
     if (current == null) {
       throw Exception('User not found');

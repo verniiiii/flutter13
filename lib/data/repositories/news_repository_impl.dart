@@ -1,12 +1,17 @@
 import '../../domain/repositories/news_repository.dart';
 import '../../domain/entities/news_entity.dart';
 import '../datasources/local/news_local_datasource.dart';
+import '../datasources/remote/news_remote_datasource.dart';
 import '../../core/models/news_model.dart';
 
 class NewsRepositoryImpl implements NewsRepository {
   final NewsLocalDataSource localDataSource;
+  final NewsRemoteDataSource? remoteDataSource;
 
-  NewsRepositoryImpl(this.localDataSource);
+  NewsRepositoryImpl(
+    this.localDataSource, {
+    this.remoteDataSource,
+  });
 
   CurrencyRateEntity _rateModelToEntity(CurrencyRate model) {
     return CurrencyRateEntity(
@@ -52,7 +57,30 @@ class NewsRepositoryImpl implements NewsRepository {
 
   @override
   Future<List<NewsArticleEntity>> getNews() async {
-    final models = await localDataSource.getAllNewsArticles(); // Исправлено с getNews() на getAllNewsArticles()
+    // Используем Remote DataSource, если он доступен
+    if (remoteDataSource != null) {
+      try {
+        // Получаем топ новости из NewsAPI
+        final remoteModels = await remoteDataSource!.getTopHeadlines(
+          country: 'us',
+          pageSize: 20,
+        );
+        
+        // Сохраняем в локальное хранилище для кеширования
+        for (final article in remoteModels) {
+          await localDataSource.createNewsArticle(article);
+        }
+        
+        return remoteModels.map(_articleModelToEntity).toList();
+      } catch (e) {
+        // Если ошибка сети, возвращаем локальные данные
+        final localModels = await localDataSource.getAllNewsArticles();
+        return localModels.map(_articleModelToEntity).toList();
+      }
+    }
+
+    // Существующая локальная логика (fallback)
+    final models = await localDataSource.getAllNewsArticles();
     return models.map(_articleModelToEntity).toList();
   }
 

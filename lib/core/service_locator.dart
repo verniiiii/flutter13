@@ -18,6 +18,16 @@ import 'package:prac13/data/datasources/local/user_local_datasource.dart';
 import 'package:prac13/data/datasources/local/auth_local_datasource.dart';
 import 'package:prac13/data/datasources/local/social_local_datasource.dart';
 
+// Remote Data Sources
+import 'package:prac13/data/datasources/remote/api/dio_client.dart';
+import 'package:prac13/data/datasources/remote/api/supabase_auth_client.dart';
+import 'package:prac13/data/datasources/remote/auth_remote_datasource.dart';
+import 'package:prac13/data/datasources/remote/api/news_api_client.dart';
+import 'package:prac13/data/datasources/remote/news_remote_datasource.dart';
+
+// Core Constants
+import 'package:prac13/core/constants/api_config.dart';
+
 // Repositories
 import 'package:prac13/data/repositories/transaction_repository_impl.dart';
 import 'package:prac13/data/repositories/auth_repository_impl.dart';
@@ -126,11 +136,47 @@ Future<void> setupServiceLocator() async {
   // Note: SQLite-based sources don't need initializeMockData, but social still does
   socialLocalDataSource.initializeMockData();
 
+  // ========== REMOTE DATA SOURCES ==========
+  // Supabase Auth API Configuration
+  final supabaseBaseUrl = ApiConfig.getSupabaseAuthBaseUrl();
+  final supabaseApiKey = ApiConfig.getSupabaseApiKey();
+  
+  // Supabase Auth Client (чистый Dio, без Retrofit)
+  final supabaseAuthClient = SupabaseAuthClient(
+    baseUrl: supabaseBaseUrl,
+    apiKey: supabaseApiKey,
+  );
+  getIt.registerSingleton<SupabaseAuthClient>(supabaseAuthClient);
+
+  // Auth Remote DataSource
+  final authRemoteDataSource = AuthRemoteDataSource(
+    client: supabaseAuthClient,
+    secureStorage: secureStorage,
+  );
+  getIt.registerSingleton<AuthRemoteDataSource>(authRemoteDataSource);
+
+  // NewsAPI.org Client (чистый Dio, без Retrofit)
+  final newsApiKey = ApiConfig.getNewsApiKey();
+  final newsApiClient = NewsApiClient(apiKey: newsApiKey);
+  getIt.registerSingleton<NewsApiClient>(newsApiClient);
+
+  // News Remote DataSource
+  final newsRemoteDataSource = NewsRemoteDataSource(
+    apiClient: newsApiClient,
+  );
+  getIt.registerSingleton<NewsRemoteDataSource>(newsRemoteDataSource);
+
   // ========== REPOSITORIES ==========
   final transactionRepository = TransactionRepositoryImpl(transactionLocalDataSource);
-  final authRepository = AuthRepositoryImpl(authLocalDataSource);
+  final authRepository = AuthRepositoryImpl(
+    authLocalDataSource,
+    remoteDataSource: authRemoteDataSource,
+  );
   final cardRepository = CardRepositoryImpl(cardLocalDataSource);
-  final newsRepository = NewsRepositoryImpl(newsLocalDataSource);
+  final newsRepository = NewsRepositoryImpl(
+    newsLocalDataSource,
+    remoteDataSource: newsRemoteDataSource,
+  );
   final motivationRepository = MotivationRepositoryImpl(motivationLocalDataSource);
   final socialRepository = SocialRepositoryImpl(socialLocalDataSource);
 
