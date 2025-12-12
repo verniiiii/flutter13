@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:get_it/get_it.dart';
 import 'package:prac13/ui/features/news/state/news_store.dart';
 import 'package:prac13/core/models/news_model.dart';
@@ -50,8 +49,9 @@ class NewsScreen extends StatelessWidget {
   }
 
   Widget _buildCurrencyRatesTab(NewsStore store, BuildContext context) {
-    return Observer(
-      builder: (_) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
         if (store.isLoading && store.currencyRates.isEmpty) {
           return const Center(
             child: CircularProgressIndicator(),
@@ -163,8 +163,9 @@ class NewsScreen extends StatelessWidget {
   }
 
   Widget _buildNewsTab(NewsStore store, BuildContext context) {
-    return Observer(
-      builder: (_) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
         return Column(
           children: [
             // Фильтры и поиск
@@ -208,8 +209,9 @@ class NewsScreen extends StatelessWidget {
           const SizedBox(height: 12),
 
           // Категории
-          Observer(
-            builder: (_) => SingleChildScrollView(
+          ListenableBuilder(
+            listenable: store,
+            builder: (context, _) => SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: NewsCategory.values.map((category) {
@@ -226,11 +228,40 @@ class NewsScreen extends StatelessWidget {
             ),
           ),
 
+          const SizedBox(height: 12),
+
+          // Фильтр по стране
+          Row(
+            children: [
+              const Text('Страна:', style: TextStyle(fontSize: 14)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButton<String>(
+                  value: store.selectedCountry ?? 'us',
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'us', child: Text('США')),
+                    DropdownMenuItem(value: 'ru', child: Text('Россия')),
+                    DropdownMenuItem(value: 'gb', child: Text('Великобритания')),
+                    DropdownMenuItem(value: 'de', child: Text('Германия')),
+                    DropdownMenuItem(value: 'fr', child: Text('Франция')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      store.setCountry(value);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+
           const SizedBox(height: 8),
 
           // Дополнительные фильтры
-          Observer(
-            builder: (_) => Row(
+          ListenableBuilder(
+            listenable: store,
+            builder: (context, _) => Row(
               children: [
                 const Text('Только непрочитанные'),
                 const Spacer(),
@@ -247,8 +278,9 @@ class NewsScreen extends StatelessWidget {
   }
 
   Widget _buildNewsList(NewsStore store, BuildContext context) {
-    return Observer(
-      builder: (_) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
         if (store.isLoading && store.newsArticles.isEmpty) {
           return const Center(
             child: CircularProgressIndicator(),
@@ -257,7 +289,39 @@ class NewsScreen extends StatelessWidget {
 
         final articles = store.filteredNews;
 
-        if (articles.isEmpty) {
+        if (store.hasError && articles.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Colors.red,
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    store.errorMessage,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.red,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: store.refreshData,
+                  child: const Text('Попробовать снова'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (articles.isEmpty && !store.isLoading) {
           return _buildEmptyNewsState(store, context);
         }
 
@@ -284,8 +348,9 @@ class NewsScreen extends StatelessWidget {
             color: Colors.grey,
           ),
           const SizedBox(height: 20),
-          Observer(
-            builder: (_) => Text(
+          ListenableBuilder(
+            listenable: store,
+            builder: (context, _) => Text(
               store.searchQuery.isNotEmpty
                   ? 'Новости не найдены'
                   : 'Нет новостей в выбранной категории',

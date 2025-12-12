@@ -59,6 +59,10 @@ import 'package:prac13/domain/usecases/cards/add_card_usecase.dart';
 import 'package:prac13/domain/usecases/cards/delete_card_usecase.dart';
 import 'package:prac13/domain/usecases/news/get_news_usecase.dart';
 import 'package:prac13/domain/usecases/news/get_currency_rates_usecase.dart';
+import 'package:prac13/domain/usecases/news/get_top_headlines_usecase.dart';
+import 'package:prac13/domain/usecases/news/search_news_usecase.dart';
+import 'package:prac13/domain/usecases/news/get_news_by_category_usecase.dart';
+import 'package:prac13/domain/usecases/news/mark_as_read_usecase.dart';
 import 'package:prac13/domain/usecases/motivation/get_random_motivation_usecase.dart';
 import 'package:prac13/domain/usecases/social/get_friends_usecase.dart';
 
@@ -236,6 +240,18 @@ Future<void> setupServiceLocator() async {
   );
   getIt.registerLazySingleton<GetCurrencyRatesUseCase>(
         () => GetCurrencyRatesUseCase(getIt<NewsRepository>()),
+  );
+  getIt.registerLazySingleton<GetTopHeadlinesUseCase>(
+        () => GetTopHeadlinesUseCase(getIt<NewsRepository>()),
+  );
+  getIt.registerLazySingleton<SearchNewsUseCase>(
+        () => SearchNewsUseCase(getIt<NewsRepository>()),
+  );
+  getIt.registerLazySingleton<GetNewsByCategoryUseCase>(
+        () => GetNewsByCategoryUseCase(getIt<NewsRepository>()),
+  );
+  getIt.registerLazySingleton<MarkAsReadUseCase>(
+        () => MarkAsReadUseCase(getIt<NewsRepository>()),
   );
 
   // Motivation

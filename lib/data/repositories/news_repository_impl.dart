@@ -91,6 +91,181 @@ class NewsRepositoryImpl implements NewsRepository {
   }
 
   @override
+  Future<List<NewsArticleEntity>> getTopHeadlines({
+    String? country,
+    String? category,
+    List<String>? sources,
+    int pageSize = 20,
+    int page = 1,
+  }) async {
+    if (remoteDataSource != null) {
+      try {
+        final remoteModels = await remoteDataSource!.getTopHeadlines(
+          country: country,
+          category: category,
+          sources: sources,
+          pageSize: pageSize,
+          page: page,
+        );
+        
+        // Сохраняем в локальное хранилище для кеширования
+        for (final article in remoteModels) {
+          await localDataSource.createNewsArticle(article);
+        }
+        
+        return remoteModels.map(_articleModelToEntity).toList();
+      } catch (e) {
+        // Если ошибка сети, возвращаем локальные данные
+        final localModels = await localDataSource.getAllNewsArticles();
+        return localModels.map(_articleModelToEntity).toList();
+      }
+    }
+
+    final models = await localDataSource.getAllNewsArticles();
+    return models.map(_articleModelToEntity).toList();
+  }
+
+  @override
+  Future<List<NewsArticleEntity>> searchNews({
+    String? query,
+    List<String>? sources,
+    List<String>? domains,
+    DateTime? from,
+    DateTime? to,
+    String? language,
+    String sortBy = 'publishedAt',
+    int pageSize = 20,
+    int page = 1,
+  }) async {
+    if (remoteDataSource != null) {
+      try {
+        final remoteModels = await remoteDataSource!.searchEverything(
+          query: query,
+          sources: sources,
+          domains: domains,
+          from: from,
+          to: to,
+          language: language,
+          sortBy: sortBy,
+          pageSize: pageSize,
+          page: page,
+        );
+        
+        // Сохраняем в локальное хранилище для кеширования
+        for (final article in remoteModels) {
+          await localDataSource.createNewsArticle(article);
+        }
+        
+        return remoteModels.map(_articleModelToEntity).toList();
+      } catch (e) {
+        // Если ошибка сети, возвращаем локальные данные
+        final localModels = await localDataSource.getAllNewsArticles();
+        return localModels.map(_articleModelToEntity).toList();
+      }
+    }
+
+    final models = await localDataSource.getAllNewsArticles();
+    return models.map(_articleModelToEntity).toList();
+  }
+
+  @override
+  Future<List<NewsArticleEntity>> getNewsByCategory({
+    required String category,
+    String? country,
+    int pageSize = 20,
+    int page = 1,
+  }) async {
+    if (remoteDataSource != null) {
+      try {
+        final remoteModels = await remoteDataSource!.getNewsByCategory(
+          category: category,
+          country: country,
+          pageSize: pageSize,
+          page: page,
+        );
+        
+        // Сохраняем в локальное хранилище для кеширования
+        for (final article in remoteModels) {
+          await localDataSource.createNewsArticle(article);
+        }
+        
+        return remoteModels.map(_articleModelToEntity).toList();
+      } catch (e) {
+        // Если ошибка сети, возвращаем локальные данные
+        final localModels = await localDataSource.getAllNewsArticles();
+        return localModels.map(_articleModelToEntity).toList();
+      }
+    }
+
+    final models = await localDataSource.getAllNewsArticles();
+    return models.map(_articleModelToEntity).toList();
+  }
+
+  @override
+  Future<List<NewsArticleEntity>> getNewsBySource({
+    required List<String> sources,
+    int pageSize = 20,
+    int page = 1,
+  }) async {
+    if (remoteDataSource != null) {
+      try {
+        final remoteModels = await remoteDataSource!.getNewsBySource(
+          sources: sources,
+          pageSize: pageSize,
+          page: page,
+        );
+        
+        // Сохраняем в локальное хранилище для кеширования
+        for (final article in remoteModels) {
+          await localDataSource.createNewsArticle(article);
+        }
+        
+        return remoteModels.map(_articleModelToEntity).toList();
+      } catch (e) {
+        // Если ошибка сети, возвращаем локальные данные
+        final localModels = await localDataSource.getAllNewsArticles();
+        return localModels.map(_articleModelToEntity).toList();
+      }
+    }
+
+    final models = await localDataSource.getAllNewsArticles();
+    return models.map(_articleModelToEntity).toList();
+  }
+
+  @override
+  Future<List<NewsArticleEntity>> getNewsByCountry({
+    required String country,
+    String? category,
+    int pageSize = 20,
+    int page = 1,
+  }) async {
+    if (remoteDataSource != null) {
+      try {
+        final remoteModels = await remoteDataSource!.getNewsByCountry(
+          country: country,
+          category: category,
+          pageSize: pageSize,
+          page: page,
+        );
+        
+        // Сохраняем в локальное хранилище для кеширования
+        for (final article in remoteModels) {
+          await localDataSource.createNewsArticle(article);
+        }
+        
+        return remoteModels.map(_articleModelToEntity).toList();
+      } catch (e) {
+        // Если ошибка сети, возвращаем локальные данные
+        final localModels = await localDataSource.getAllNewsArticles();
+        return localModels.map(_articleModelToEntity).toList();
+      }
+    }
+
+    final models = await localDataSource.getAllNewsArticles();
+    return models.map(_articleModelToEntity).toList();
+  }
+
+  @override
   Future<void> markAsRead(String newsId) async {
     await localDataSource.markAsRead(newsId);
   }

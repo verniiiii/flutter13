@@ -10,7 +10,7 @@ class ApiConfig {
   /// API ключ для NewsAPI.org
   /// TODO: Получите бесплатный API ключ на https://newsapi.org/register
   /// Бесплатный тариф: 100 запросов/день
-  static const String newsApiKey = 'YOUR_NEWS_API_KEY_HERE';
+  static const String newsApiKey = '0e6ae88af40c479f813c691826b0038f';
 
   /// Получить базовый URL для Supabase Auth
   static String getSupabaseAuthBaseUrl() {

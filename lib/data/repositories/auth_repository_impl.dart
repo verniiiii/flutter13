@@ -112,6 +112,7 @@ class AuthRepositoryImpl implements AuthRepository {
         await localDataSource.setCurrentUser(user);
         return _modelToEntity(user);
       } catch (e) {
+        print(e.toString());
         rethrow;
       }
     }
