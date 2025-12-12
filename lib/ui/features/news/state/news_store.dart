@@ -1,33 +1,83 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:get_it/get_it.dart';
 import 'package:prac13/core/models/news_model.dart';
+import 'package:prac13/domain/usecases/news/get_news_usecase.dart';
+import 'package:prac13/domain/usecases/news/get_top_headlines_usecase.dart';
+import 'package:prac13/domain/usecases/news/search_news_usecase.dart';
+import 'package:prac13/domain/usecases/news/get_news_by_category_usecase.dart';
+import 'package:prac13/domain/usecases/news/mark_as_read_usecase.dart';
+import 'package:prac13/domain/usecases/news/get_popular_news_usecase.dart';
+import 'package:prac13/domain/usecases/news/get_sources_usecase.dart';
+import 'package:prac13/domain/entities/news_entity.dart';
+import 'package:prac13/data/datasources/remote/dto/news_api_dto.dart';
+import 'package:prac13/data/datasources/remote/api/exceptions.dart';
 
 class NewsStore with ChangeNotifier {
+  final GetNewsUseCase _getNewsUseCase;
+  final GetTopHeadlinesUseCase _getTopHeadlinesUseCase;
+  final SearchNewsUseCase _searchNewsUseCase;
+  final GetNewsByCategoryUseCase _getNewsByCategoryUseCase;
+  final MarkAsReadUseCase _markAsReadUseCase;
+  final GetPopularNewsUseCase _getPopularNewsUseCase;
+  final GetSourcesUseCase _getSourcesUseCase;
+
   List<NewsArticle> _newsArticles = [];
   List<CurrencyRate> _currencyRates = [];
   bool _isLoading = false;
   String _errorMessage = '';
-  NewsCategory _selectedCategory = NewsCategory.finance;
+  NewsCategory? _selectedCategory; // null означает "Все категории"
   String _searchQuery = '';
   bool _showOnlyUnread = false;
+  String? _selectedCountry;
+  List<String> _selectedSources = [];
+  List<NewsSourceDto> _availableSources = [];
+  bool _isLoadingSources = false;
 
   List<NewsArticle> get newsArticles => List.unmodifiable(_newsArticles);
   List<CurrencyRate> get currencyRates => List.unmodifiable(_currencyRates);
   bool get isLoading => _isLoading;
   String get errorMessage => _errorMessage;
-  NewsCategory get selectedCategory => _selectedCategory;
+  NewsCategory? get selectedCategory => _selectedCategory;
   String get searchQuery => _searchQuery;
   bool get showOnlyUnread => _showOnlyUnread;
   bool get hasError => _errorMessage.isNotEmpty;
 
   List<NewsArticle> get filteredNews {
-    var articles = _newsArticles.where((article) =>
-    article.category == _selectedCategory).toList();
+    var articles = List<NewsArticle>.from(_newsArticles);
 
+    // Фильтруем по категории (если выбрана конкретная категория, не "Все")
+    if (_selectedCategory != null) {
+      articles = articles.where((article) =>
+          article.category == _selectedCategory).toList();
+    }
+
+    // Фильтруем по источникам (если выбраны источники)
+    if (_selectedSources.isNotEmpty) {
+      articles = articles.where((article) {
+        // Проверяем по sourceId, если он есть, иначе по имени источника
+        if (article.sourceId != null) {
+          return _selectedSources.contains(article.sourceId);
+        }
+        // Fallback: проверяем по имени источника
+        return _selectedSources.any((sourceId) {
+          try {
+            final source = _availableSources.firstWhere(
+              (s) => s.id == sourceId,
+            );
+            return source.name.toLowerCase() == article.source.toLowerCase();
+          } catch (e) {
+            return false;
+          }
+        });
+      }).toList();
+    }
+
+    // Дополнительная локальная фильтрация по поисковому запросу (если нужно)
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       articles = articles.where((article) =>
-      article.title.toLowerCase().contains(query) ||
+          article.title.toLowerCase().contains(query) ||
           article.summary.toLowerCase().contains(query)).toList();
     }
 
@@ -57,18 +107,210 @@ class NewsStore with ChangeNotifier {
       currency.code != 'CNY')
       .toList();
 
-  NewsStore() {
-    _loadDemoData();
+  NewsStore({
+    GetNewsUseCase? getNewsUseCase,
+    GetTopHeadlinesUseCase? getTopHeadlinesUseCase,
+    SearchNewsUseCase? searchNewsUseCase,
+    GetNewsByCategoryUseCase? getNewsByCategoryUseCase,
+    MarkAsReadUseCase? markAsReadUseCase,
+    GetPopularNewsUseCase? getPopularNewsUseCase,
+    GetSourcesUseCase? getSourcesUseCase,
+  })  : _getNewsUseCase = getNewsUseCase ?? GetIt.I<GetNewsUseCase>(),
+        _getTopHeadlinesUseCase = getTopHeadlinesUseCase ?? GetIt.I<GetTopHeadlinesUseCase>(),
+        _searchNewsUseCase = searchNewsUseCase ?? GetIt.I<SearchNewsUseCase>(),
+        _getNewsByCategoryUseCase = getNewsByCategoryUseCase ?? GetIt.I<GetNewsByCategoryUseCase>(),
+        _markAsReadUseCase = markAsReadUseCase ?? GetIt.I<MarkAsReadUseCase>(),
+        _getPopularNewsUseCase = getPopularNewsUseCase ?? GetIt.I<GetPopularNewsUseCase>(),
+        _getSourcesUseCase = getSourcesUseCase ?? GetIt.I<GetSourcesUseCase>() {
+    loadNews();
+    _loadDemoCurrencyRates();
+    _loadSources();
   }
 
-  Future<void> _loadDemoData() async {
+  List<NewsSourceDto> get availableSources => List.unmodifiable(_availableSources);
+  bool get isLoadingSources => _isLoadingSources;
+
+  Future<void> loadNews({
+    String? country,
+    String? category,
+    List<String>? sources,
+  }) async {
     _isLoading = true;
     _errorMessage = '';
     notifyListeners();
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
+      List<NewsArticleEntity> entities;
 
+      final sourcesList = sources ?? (_selectedSources.isNotEmpty ? _selectedSources : null);
+      
+      // Если есть поисковый запрос, используем поиск
+      if (_searchQuery.isNotEmpty) {
+        entities = await _searchNewsUseCase.call(
+          query: _searchQuery,
+          sources: sourcesList,
+          language: 'ru',
+          pageSize: 20,
+        );
+      }
+      // Если выбраны источники, используем getTopHeadlines с источниками
+      else if (sourcesList != null && sourcesList.isNotEmpty) {
+        final apiCategory = category != null 
+            ? category 
+            : (_selectedCategory != null ? _mapCategoryToApiCategory(_selectedCategory!) : null);
+        entities = await _getTopHeadlinesUseCase.call(
+          country: country ?? _selectedCountry,
+          category: apiCategory,
+          sources: sourcesList,
+          pageSize: 20,
+        );
+      }
+      // Если передана категория как строка, или выбрана категория в UI
+      else if (category != null || _selectedCategory != null) {
+        // Преобразуем строку в NewsCategory если нужно
+        final newsCategory = category != null
+            ? _stringToNewsCategory(category)
+            : _selectedCategory!;
+
+        final categoryName = _mapCategoryToApiCategory(newsCategory);
+        entities = await _getNewsByCategoryUseCase.call(
+          category: categoryName,
+          country: country ?? _selectedCountry ?? 'us',
+          pageSize: 20,
+        );
+      }
+      // Иначе загружаем топ новости
+      else {
+        // Используем либо переданную строку категории, либо дефолтную
+        final apiCategory = category;
+        entities = await _getTopHeadlinesUseCase.call(
+          country: country ?? _selectedCountry ?? 'us',
+          category: apiCategory,
+          sources: null,
+          pageSize: 20,
+        );
+      }
+
+      _newsArticles = entities.map(_entityToModel).toList();
+      _errorMessage = '';
+    } catch (e) {
+      _errorMessage = _extractErrorMessage(e);
+      print(e.toString());
+      // Если ошибка, оставляем существующие новости
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Преобразование строки категории в enum NewsCategory
+  NewsCategory _stringToNewsCategory(String? categoryString) {
+    if (categoryString == null) return NewsCategory.finance;
+
+    switch (categoryString.toLowerCase()) {
+      case 'finance':
+      case 'business':
+        return NewsCategory.finance;
+      case 'economy':
+        return NewsCategory.economy;
+      case 'personalFinance':
+        return NewsCategory.personalFinance;
+      case 'crypto':
+        return NewsCategory.crypto;
+      case 'stocks':
+        return NewsCategory.stocks;
+      default:
+        return NewsCategory.finance;
+    }
+  }
+
+  /// Загрузка списка доступных источников
+  Future<void> _loadSources() async {
+    _isLoadingSources = true;
+    notifyListeners();
+
+    try {
+      _availableSources = await _getSourcesUseCase.call();
+    } catch (e) {
+      // Если не удалось загрузить, используем популярные источники по умолчанию
+      _availableSources = [
+        NewsSourceDto(
+          id: 'bbc-news',
+          name: 'BBC News',
+          url: 'https://www.bbc.com',
+          category: 'general',
+          language: 'en',
+          country: 'gb',
+        ),
+        NewsSourceDto(
+          id: 'cnn',
+          name: 'CNN',
+          url: 'https://www.cnn.com',
+          category: 'general',
+          language: 'en',
+          country: 'us',
+        ),
+        NewsSourceDto(
+          id: 'reuters',
+          name: 'Reuters',
+          url: 'https://www.reuters.com',
+          category: 'business',
+          language: 'en',
+          country: 'us',
+        ),
+        NewsSourceDto(
+          id: 'the-verge',
+          name: 'The Verge',
+          url: 'https://www.theverge.com',
+          category: 'technology',
+          language: 'en',
+          country: 'us',
+        ),
+        NewsSourceDto(
+          id: 'techcrunch',
+          name: 'TechCrunch',
+          url: 'https://techcrunch.com',
+          category: 'technology',
+          language: 'en',
+          country: 'us',
+        ),
+        NewsSourceDto(
+          id: 'bloomberg',
+          name: 'Bloomberg',
+          url: 'https://www.bloomberg.com',
+          category: 'business',
+          language: 'en',
+          country: 'us',
+        ),
+        NewsSourceDto(
+          id: 'financial-times',
+          name: 'Financial Times',
+          url: 'https://www.ft.com',
+          category: 'business',
+          language: 'en',
+          country: 'gb',
+        ),
+        NewsSourceDto(
+          id: 'the-wall-street-journal',
+          name: 'The Wall Street Journal',
+          url: 'https://www.wsj.com',
+          category: 'business',
+          language: 'en',
+          country: 'us',
+        ),
+      ];
+    } finally {
+      _isLoadingSources = false;
+      notifyListeners();
+    }
+  }
+
+  /// Загрузка демо-данных для курсов валют (пока нет API)
+  Future<void> _loadDemoCurrencyRates() async {
+    // Загружаем курсы валют только если их еще нет
+    if (_currencyRates.isNotEmpty) return;
+
+    try {
       // Демо данные - курсы валют
       _currencyRates.addAll([
         CurrencyRate(
@@ -120,79 +362,28 @@ class NewsStore with ChangeNotifier {
           symbol: 'Fr',
         ),
       ]);
-
-      // Демо данные - новости
-      _newsArticles.addAll([
-        NewsArticle(
-          id: '1',
-          title: 'ЦБ РФ сохранил ключевую ставку на уровне 16%',
-          summary: 'Банк России принял решение сохранить ключевую ставку на уровне 16% годовых.',
-          content: 'Центральный банк Российской Федерации на заседании совета директоров принял решение сохранить ключевую ставку на уровне 16% годовых. Такое решение было ожидаемо большинством аналитиков.',
-          imageUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=400&h=250&fit=crop',
-          category: NewsCategory.finance,
-          source: 'РБК',
-          publishedAt: DateTime.now().subtract(const Duration(hours: 2)),
-          url: 'https://example.com/news/1',
-        ),
-        NewsArticle(
-          id: '2',
-          title: 'Курс доллара обновил максимум с начала года',
-          summary: 'Доллар США на Московской бирже подорожал до 93 рублей.',
-          content: 'Курс доллара США к рублю на Московской бирже в ходе торгов поднялся до 93 рублей, что стало максимальным значением с начала текущего года.',
-          imageUrl: 'https://images.unsplash.com/photo-1604594849809-dfedbc827105?w=400&h=250&fit=crop',
-          category: NewsCategory.finance,
-          source: 'Коммерсантъ',
-          publishedAt: DateTime.now().subtract(const Duration(hours: 5)),
-          url: 'https://example.com/news/2',
-        ),
-        NewsArticle(
-          id: '3',
-          title: 'Биткоин превысил \$50,000',
-          summary: 'Крупнейшая криптовалюта впервые с 2021 года преодолела отметку в \$50,000.',
-          content: 'Капитализация биткоина превысила \$1 триллион после роста цены выше \$50,000. Аналитики связывают рост с одобрением биткоин-ETF в США.',
-          imageUrl: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400&h=250&fit=crop',
-          category: NewsCategory.crypto,
-          source: 'CoinDesk',
-          publishedAt: DateTime.now().subtract(const Duration(hours: 8)),
-          url: 'https://example.com/news/3',
-        ),
-        NewsArticle(
-          id: '4',
-          title: 'Инфляция в РФ замедлилась до 7,2%',
-          summary: 'Годовая инфляция в России в январе замедлилась до 7,2%.',
-          content: 'По данным Росстата, годовая инфляция в России в январе замедлилась до 7,2% после 7,4% в декабре. Базовая инфляция составила 6,8%.',
-          imageUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&h=250&fit=crop',
-          category: NewsCategory.economy,
-          source: 'Интерфакс',
-          publishedAt: DateTime.now().subtract(const Duration(days: 1)),
-          url: 'https://example.com/news/4',
-        ),
-        NewsArticle(
-          id: '5',
-          title: 'Советы по накоплению на первоначальный взгляд',
-          summary: 'Эксперты рассказали, как эффективно копить на жилье в текущих условиях.',
-          content: 'Финансовые консультанты рекомендуют откладывать не менее 20% дохода, использовать программы льготной ипотеки и рассматривать альтернативные варианты инвестиций.',
-          imageUrl: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=400&h=250&fit=crop',
-          category: NewsCategory.personalFinance,
-          source: 'Финансы.ru',
-          publishedAt: DateTime.now().subtract(const Duration(days: 2)),
-          url: 'https://example.com/news/5',
-        ),
-        NewsArticle(
-          id: '6',
-          title: 'Акции Сбербанка выросли на 3%',
-          summary: 'Ценные бумаги Сбербанка показали лучшую динамику среди голубых фишек.',
-          content: 'Акции ПАО Сбербанк на Московской бирже подорожали на 3% после публикации сильных отчетных результатов за четвертый квартал.',
-          imageUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=400&h=250&fit=crop',
-          category: NewsCategory.stocks,
-          source: 'Ведомости',
-          publishedAt: DateTime.now().subtract(const Duration(days: 3)),
-          url: 'https://example.com/news/6',
-        ),
-      ]);
-
     } catch (e) {
-      _errorMessage = 'Ошибка загрузки данных';
+      // Игнорируем ошибки при загрузке демо-данных
+    }
+  }
+
+  /// Загрузка популярных новостей
+  Future<void> loadPopularNews({String? language}) async {
+    _isLoading = true;
+    _errorMessage = '';
+    notifyListeners();
+
+    try {
+      final entities = await _getPopularNewsUseCase.call(
+        language: language ?? 'en',
+        pageSize: 20,
+      );
+
+      _newsArticles = entities.map(_entityToModel).toList();
+      _errorMessage = '';
+    } catch (e) {
+      _errorMessage = _extractErrorMessage(e);
+      print(e.toString());
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -200,45 +391,115 @@ class NewsStore with ChangeNotifier {
   }
 
   Future<void> refreshData() async {
-    _isLoading = true;
-    _errorMessage = '';
+    // Обновляем новости из API
+    await loadNews(
+      country: _selectedCountry,
+      category: _selectedCategory != null ? _mapCategoryToApiCategory(_selectedCategory!) : null,
+      sources: _selectedSources.isNotEmpty ? _selectedSources : null,
+    );
+
+    // Обновляем курсы валют (демо - случайное изменение)
+    for (var i = 0; i < _currencyRates.length; i++) {
+      final change = (Random().nextDouble() * 2 - 1) * 0.5;
+      final currentRate = _currencyRates[i].rate;
+      final newRate = currentRate + change;
+      final changePercent = (change / currentRate) * 100;
+
+      _currencyRates[i] = _currencyRates[i].copyWith(
+        rate: double.parse(newRate.toStringAsFixed(4)),
+        change: double.parse(change.toStringAsFixed(4)),
+        changePercent: double.parse(changePercent.toStringAsFixed(2)),
+      );
+    }
+
     notifyListeners();
+  }
 
-    try {
-      await Future.delayed(const Duration(seconds: 3));
-      // В реальном приложении здесь будет обновление данных с API
-
-      // Обновляем курсы валют (демо - случайное изменение)
-      for (var i = 0; i < _currencyRates.length; i++) {
-        final change = (Random().nextDouble() * 2 - 1) * 0.5;
-        final currentRate = _currencyRates[i].rate;
-        final newRate = currentRate + change;
-        final changePercent = (change / currentRate) * 100;
-
-        _currencyRates[i] = _currencyRates[i].copyWith(
-          rate: double.parse(newRate.toStringAsFixed(4)),
-          change: double.parse(change.toStringAsFixed(4)),
-          changePercent: double.parse(changePercent.toStringAsFixed(2)),
-        );
-      }
-
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Ошибка обновления данных';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
+  void setCategory(NewsCategory? category) {
+    _selectedCategory = category;
+    notifyListeners();
+    // Автоматически загружаем новости при смене категории
+    if (category != null) {
+      loadNews(category: _mapCategoryToApiCategory(category));
+    } else {
+      loadNews();
     }
   }
 
-  void setCategory(NewsCategory category) {
-    _selectedCategory = category;
+  void selectAllCategories() {
+    _selectedCategory = null;
     notifyListeners();
+    loadNews();
   }
 
   void setSearchQuery(String query) {
     _searchQuery = query;
+    // Автоматически ищем новости при изменении запроса (с задержкой)
+    if (query.isNotEmpty) {
+      _debounceSearch();
+    } else {
+      // Если запрос пустой, загружаем обычные новости
+      loadNews();
+    }
+  }
+
+  void setCountry(String? country) {
+    _selectedCountry = country;
     notifyListeners();
+    loadNews(country: country);
+  }
+
+  void selectAllCountries() {
+    _selectedCountry = null;
+    notifyListeners();
+    loadNews();
+  }
+
+  void setSources(List<String> sources) {
+    _selectedSources = sources;
+    if (sources.isNotEmpty) {
+      loadNews(sources: sources);
+    } else {
+      loadNews();
+    }
+  }
+
+  void toggleSource(String sourceId) {
+    if (_selectedSources.contains(sourceId)) {
+      _selectedSources.remove(sourceId);
+    } else {
+      _selectedSources.add(sourceId);
+    }
+    notifyListeners();
+    if (_selectedSources.isNotEmpty) {
+      loadNews(sources: _selectedSources);
+    } else {
+      loadNews();
+    }
+  }
+
+  void clearSources() {
+    _selectedSources.clear();
+    notifyListeners();
+    loadNews();
+  }
+
+  void selectAllSources() {
+    _selectedSources = _availableSources.map((s) => s.id).toList();
+    notifyListeners();
+    loadNews(sources: _selectedSources);
+  }
+
+  String? get selectedCountry => _selectedCountry;
+  List<String> get selectedSources => List.unmodifiable(_selectedSources);
+
+  // Debounce для поиска (чтобы не делать запрос при каждом символе)
+  void _debounceSearch() {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (_searchQuery.isNotEmpty) {
+        loadNews();
+      }
+    });
   }
 
   void toggleShowOnlyUnread() {
@@ -246,11 +507,18 @@ class NewsStore with ChangeNotifier {
     notifyListeners();
   }
 
-  void markAsRead(String articleId) {
+  Future<void> markAsRead(String articleId) async {
     final index = _newsArticles.indexWhere((article) => article.id == articleId);
     if (index != -1) {
       _newsArticles[index] = _newsArticles[index].copyWith(isRead: true);
       notifyListeners();
+      
+      // Сохраняем в локальное хранилище через UseCase
+      try {
+        await _markAsReadUseCase.call(articleId);
+      } catch (e) {
+        // Игнорируем ошибки при сохранении статуса прочтения
+      }
     }
   }
 
@@ -376,6 +644,66 @@ class NewsStore with ChangeNotifier {
         .sorted((a, b) => b.value.compareTo(a.value))
         .map((e) => e.key)
         .toList();
+  }
+
+  /// Преобразование NewsArticleEntity в NewsArticle модель
+  NewsArticle _entityToModel(NewsArticleEntity entity) {
+    return NewsArticle(
+      id: entity.id,
+      title: entity.title,
+      summary: entity.summary,
+      content: entity.content,
+      imageUrl: entity.imageUrl,
+      category: entity.category,
+      source: entity.source,
+      publishedAt: entity.publishedAt,
+      url: entity.url,
+      isRead: entity.isRead,
+    );
+  }
+
+  /// Маппинг категории приложения в категорию NewsAPI
+  String _mapCategoryToApiCategory(NewsCategory category) {
+    switch (category) {
+      case NewsCategory.finance:
+      case NewsCategory.economy:
+      case NewsCategory.personalFinance:
+        return 'business';
+      case NewsCategory.crypto:
+      case NewsCategory.stocks:
+        return 'business';
+      default:
+        return 'business';
+    }
+  }
+
+  /// Извлечение сообщения об ошибке из исключения
+  String _extractErrorMessage(dynamic error) {
+    if (error is NetworkException) {
+      return error.message;
+    }
+
+    if (error is NoInternetException) {
+      return 'Нет подключения к интернету';
+    }
+
+    if (error is TimeoutException) {
+      return 'Превышено время ожидания. Проверьте подключение к интернету';
+    }
+
+    if (error is RateLimitException) {
+      return 'Превышен лимит запросов. Попробуйте позже';
+    }
+
+    if (error is Exception) {
+      final message = error.toString();
+      if (message.startsWith('Exception: ')) {
+        return message.substring(11);
+      }
+      return message;
+    }
+
+    return 'Произошла ошибка при загрузке новостей';
   }
 }
 
