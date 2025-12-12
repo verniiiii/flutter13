@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_it/get_it.dart';
 import 'package:prac13/ui/features/auth/state/auth_store.dart';
@@ -197,27 +196,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
         const SizedBox(height: 8),
 
-        // Забыли пароль
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: () {
-              context.push('/forgot-password');
-            },
-            child: Text(
-              'Забыли пароль?',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
-        ),
-
         const SizedBox(height: 24),
 
         // Кнопка входа
-        Observer(
-          builder: (_) => SizedBox(
+        ListenableBuilder(
+          listenable: authStore,
+          builder: (context, _) => SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: authStore.isLoading ? null : _handleLogin,
@@ -253,8 +237,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         const SizedBox(height: 16),
 
         // Сообщение об ошибке
-        Observer(
-          builder: (_) => AnimatedSwitcher(
+        ListenableBuilder(
+          listenable: authStore,
+          builder: (context, _) => AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: authStore.hasError
                 ? Container(
